@@ -8,6 +8,8 @@ This repository is a **library of iOS IPA files**, organized for easy browsing a
 
 The website connected to this library hosts an **AltStore repository (JSON catalog)** listing all available apps. Users can download IPA files and use their preferred signing or installation method.
 
+> Note: Some files may also be part of other projects hosted in this repository.
+
 ## How to Use
 
 1. Download the IPA(s) you want.  
