@@ -217,14 +217,20 @@ backBtn.addEventListener('click',()=>{
   searchBar.style.display = "none";
 });
 
-// ✅ Fixed Search filter
+// ✅ Fixed Search filter (now checks more fields)
 searchInput.addEventListener('input', ()=>{
   const q = searchInput.value.toLowerCase();
   const filtered = currentApps.filter(app=>{
     const latest = (app.versions && app.versions.length) ? app.versions[0] : {};
-    const desc = app.subtitle || app.localizedDescription || latest.localizedDescription || "";
-    return (app.name||"").toLowerCase().includes(q) ||
-           desc.toLowerCase().includes(q);
+    const fields = [
+      app.name,
+      app.subtitle,
+      app.localizedDescription,
+      app.developerName,
+      app.bundleIdentifier,
+      latest.localizedDescription
+    ];
+    return fields.some(f => f && f.toLowerCase().includes(q));
   });
   renderApps(filtered);
 });
