@@ -115,7 +115,7 @@ const repos = [
   "https://aio.yippee.rip/repo.json",
   "https://community-apps.sidestore.io/sidecommunity.json",
   "https://raw.githubusercontent.com/arichornloverALT/arichornloveralt.github.io/main/apps2.json",
-  "https://raw.githubusercontent.com/arichornloverALT/arichornloveralt.github.io/main/apps.json",
+  "https://raw.githubusercontent.com/arichornloveralt/arichornloveralt.github.io/main/apps.json",
   "https://raw.githubusercontent.com/lo-cafe/winston-altstore/main/apps.json",
   "https://theodyssey.dev/altstore/odysseysource.json",
   "https://provenance-emu.com/apps.json",
@@ -217,8 +217,8 @@ backBtn.addEventListener('click',()=>{
   searchBar.style.display = "none";
 });
 
-// Search filter
-searchInput.addEventListener=('input', ()=>{
+// ✅ Fixed Search filter
+searchInput.addEventListener('input', ()=>{
   const q = searchInput.value.toLowerCase();
   const filtered = currentApps.filter(app=>{
     const latest = (app.versions && app.versions.length) ? app.versions[0] : {};
