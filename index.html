@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Choco Milky IPA Library V2</title>
+<style>
+:root {
+  --bg: #0d0d0f;
+  --card: rgba(28,28,32,0.85);
+  --accent: #0a84ff;
+  --text: #f5f5f7;
+  --subtle: #9ca3af;
+  --radius: 20px;
+  --shadow: 0 8px 24px rgba(0,0,0,0.4);
+  font-family: -apple-system, BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+body {
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  display:flex;
+  flex-direction:column;
+  min-height:100vh;
+}
+header { padding:32px 20px 16px; text-align:center; }
+h1 { margin:0; font-size:22px; font-weight:600; letter-spacing:-0.2px; }
+
+#repos { max-width:800px; margin:20px auto; padding:0 20px; display:flex; flex-direction:column; gap:14px; }
+.repo-card {
+  display:flex; align-items:center; gap:12px;
+  background:var(--card);
+  padding:14px 18px;
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+}
+.repo-card img { width:48px;height:48px;border-radius:12px; }
+.repo-info { flex:1; }
+.repo-name { font-weight:600;font-size:16px; }
+.repo-desc { font-size:13px;color:var(--subtle); }
+.repo-card button {
+  background:var(--accent); color:#fff; border:0;
+  padding:10px 14px; border-radius:var(--radius); font-weight:600;
+  cursor:pointer; transition:background 0.2s;
+}
+.repo-card button:hover { background:#0066dd; }
+
+#searchBar { display:none; justify-content:center; margin:20px auto; max-width:600px; padding:0 20px; }
+#searchInput {
+  flex:1; padding:14px 16px; border:1px solid rgba(255,255,255,0.1);
+  border-radius:var(--radius); font-size:15px;
+  background:rgba(255,255,255,0.05); color:var(--text);
+}
+#apps {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:20px; padding:20px; flex:1;
+}
+.card {
+  background:var(--card); border-radius:var(--radius);
+  padding:20px; text-align:center; box-shadow:var(--shadow);
+  display:flex; flex-direction:column; align-items:center;
+}
+.icon img { width:72px;height:72px;border-radius:16px;margin-bottom:12px; }
+.title { font-weight:600;font-size:16px;margin-bottom:4px; }
+.subtitle { font-size:13px;color:var(--subtle);margin-bottom:8px; }
+.version { font-size:12px;color:#888;margin-bottom:12px; }
+.download {
+  background:var(--accent); color:#fff; text-decoration:none;
+  padding:10px 16px; border-radius:var(--radius); font-weight:600;
+  transition:background 0.2s;
+}
+.download:hover { background:#0066dd; }
+
+#backBtn {
+  display:none; margin:0 auto; margin-top:10px;
+  background:#333; color:#fff; border:0;
+  padding:10px 16px; border-radius:var(--radius);
+  cursor:pointer; font-weight:600;
+}
+
+footer { text-align:center; font-size:12px; color:var(--subtle);
+  padding:12px 0; border-top:1px solid rgba(255,255,255,0.1); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Choco Milky IPA Library V2</h1>
+</header>
+
+<div id="repos"></div>
+<button id="backBtn">← Back to Libraries</button>
+<div id="searchBar">
+  <input id="searchInput" type="text" placeholder="Search apps…">
+</div>
+
+<div id="apps"></div>
+
+<footer>
+  © 2025 Choco Milky IPA Library V2
+</footer>
+
+<script>
+const repos = [
+  "https://raw.githubusercontent.com/Neoncat-OG/TrollStore-IPAs/refs/heads/main/apps.json",
+  "https://wuxu1.github.io/wuxu-complete-plus.json",
+  "https://wuxu1.github.io/wuxu-complete.json",
+  "https://raw.githubusercontent.com/WhySooooFurious/Ultimate-Sideloading-Guide/refs/heads/main/raw-files/app-repo.json",
+  "https://esign.yyyue.xyz/app.json",
+  "https://raw.githubusercontent.com/vizunchik/AltStoreRus/master/apps.json",
+  "https://qnblackcat.github.io/AltStore/apps.json",
+  "https://randomblock1.com/altstore/apps.json",
+  "https://driftywinds.github.io/AltStore/apps.json",
+  "https://raw.githubusercontent.com/TheNightmanCodeth/chromium-ios/master/altstore-source.json",
+  "https://repository.apptesters.org/",
+  "https://aio.yippee.rip/repo.json",
+  "https://community-apps.sidestore.io/sidecommunity.json",
+  "https://raw.githubusercontent.com/arichornloverALT/arichornloveralt.github.io/main/apps2.json",
+  "https://raw.githubusercontent.com/arichornloverALT/arichornloveralt.github.io/main/apps.json",
+  "https://raw.githubusercontent.com/lo-cafe/winston-altstore/main/apps.json",
+  "https://theodyssey.dev/altstore/odysseysource.json",
+  "https://provenance-emu.com/apps.json",
+  "https://ish.app/altstore.json",
+  "https://raw.githubusercontent.com/Balackburn/YTLitePlusAltstore/main/apps.json",
+  "https://raw.githubusercontent.com/whoeevee/EeveeSpotify/swift/repo.json",
+  "https://raw.githubusercontent.com/driftywinds/driftywinds.github.io/master/AltStore/apps.json",
+  "https://xitrix.github.io/iTorrent/AltStore.json",
+  "https://driftywinds.github.io/repos/esign.json",
+  "https://github.com/khcrysalis/Feather/raw/main/app-repo.json",
+  "https://flyinghead.github.io/flycast-builds/altstore.json"
+];
+
+const reposArea = document.getElementById('repos');
+const appsArea = document.getElementById('apps');
+const searchBar = document.getElementById('searchBar');
+const searchInput = document.getElementById('searchInput');
+const backBtn = document.getElementById('backBtn');
+
+let currentApps = [];
+
+// Load repos metadata
+async function loadRepos(){
+  reposArea.innerHTML = "<div style='text-align:center;color:#999'>Loading libraries…</div>";
+  let html = "";
+  for(const url of repos){
+    try{
+      const res = await fetch(url);
+      const data = await res.json();
+      const firstApp = data.apps && data.apps.length ? data.apps[0] : {};
+      const icon = data.iconURL || firstApp.iconURL || "";
+      const name = data.name || firstApp.name || "Untitled Repo";
+      const desc = data.description || firstApp.subtitle || firstApp.localizedDescription || "No description.";
+      html += `
+        <div class="repo-card">
+          <img src="${icon}" alt="">
+          <div class="repo-info">
+            <div class="repo-name">${name}</div>
+            <div class="repo-desc">${desc}</div>
+          </div>
+          <button onclick="openRepo('${url.replace(/'/g,"\\'")}')">Open</button>
+        </div>
+      `;
+    }catch(e){
+      console.warn("Repo failed:", url, e);
+    }
+  }
+  reposArea.innerHTML = html || "<div style='text-align:center;color:#999'>No libraries loaded.</div>";
+}
+
+// Open a repo
+async function openRepo(url){
+  reposArea.style.display = "none";
+  backBtn.style.display = "block";
+  searchBar.style.display = "flex";
+  appsArea.innerHTML = "<div style='grid-column:1/-1;text-align:center;color:#999'>Loading apps…</div>";
+  try{
+    const res = await fetch(url);
+    const data = await res.json();
+    currentApps = data.apps || [];
+    renderApps(currentApps);
+  }catch(err){
+    appsArea.innerHTML = `<div style="color:#f55;grid-column:1/-1;text-align:center">Error: ${err.message}</div>`;
+    currentApps = [];
+  }
+}
+
+// Render apps
+function renderApps(apps){
+  if(!apps.length){
+    appsArea.innerHTML = "<div style='grid-column:1/-1;text-align:center;color:#999'>No apps found.</div>";
+    return;
+  }
+  appsArea.innerHTML = "";
+  apps.forEach(app=>{
+    const latest = (app.versions && app.versions.length) ? app.versions[0] : {};
+    const version = latest.version || app.version || "";
+    const desc = app.subtitle || app.localizedDescription || latest.localizedDescription || "";
+    const downloadURL = app.downloadURL || latest.downloadURL || "#";
+
+    const card = document.createElement('div');
+    card.className="card";
+    card.innerHTML=`
+      <div class="icon"><img src="${app.iconURL||''}" alt=""></div>
+      <div class="title">${app.name||''}</div>
+      <div class="subtitle">${desc}</div>
+      <div class="version">${version ? "Version "+version : ""}</div>
+      <a class="download" href="${downloadURL}" target="_blank" rel="noopener">Download</a>
+    `;
+    appsArea.appendChild(card);
+  });
+}
+
+// Back button
+backBtn.addEventListener('click',()=>{
+  appsArea.innerHTML = "";
+  reposArea.style.display = "flex";
+  backBtn.style.display = "none";
+  searchBar.style.display = "none";
+});
+
+// Search filter
+searchInput.addEventListener=('input', ()=>{
+  const q = searchInput.value.toLowerCase();
+  const filtered = currentApps.filter(app=>{
+    const latest = (app.versions && app.versions.length) ? app.versions[0] : {};
+    const desc = app.subtitle || app.localizedDescription || latest.localizedDescription || "";
+    return (app.name||"").toLowerCase().includes(q) ||
+           desc.toLowerCase().includes(q);
+  });
+  renderApps(filtered);
+});
+
+loadRepos();
+</script>
+</body>
+</html>
