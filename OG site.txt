@@ -70,11 +70,9 @@ const defaultRepos = [
   "https://raw.githubusercontent.com/WhySooooFurious/Ultimate-Sideloading-Guide/refs/heads/main/raw-files/app-repo.json",
   "https://esign.yyyue.xyz/app.json",
   "https://raw.githubusercontent.com/vizunchik/AltStoreRus/master/apps.json",
-  "https://raw.githubusercontent.com/vizunchik/AltStoreRus/master/apps.json",
   "https://qnblackcat.github.io/AltStore/apps.json",
   "https://randomblock1.com/altstore/apps.json",
   "https://wuxu1.github.io/wuxu-complete-plus.json",
-  "https://wuxu1.github.io/wuxu-complete.json",
   "https://ipa.cypwn.xyz/cypwn.json",
   "https://driftywinds.github.io/AltStore/apps.json",
   "https://hann8n.github.io/JackCracks/MovieboxPro.json",
@@ -93,19 +91,16 @@ const defaultRepos = [
   "https://raw.githubusercontent.com/Balackburn/YTLitePlusAltstore/main/apps.json",
   "https://raw.githubusercontent.com/whoeevee/EeveeSpotify/swift/repo.json",
   "https://altstore.oatmealdome.me/",
-  "https://raw.githubusercontent.com/driftywinds/driftywinds.github.io/master/AltStore/apps.json",
   "https://alts.lao.sb/",
   "https://xitrix.github.io/iTorrent/AltStore.json",
   "https://driftywinds.github.io/repos/esign.json",
   "https://github.com/khcrysalis/Feather/raw/main/app-repo.json",
   "https://apps.nabzclan.vip/repos/altstore.php",
   "https://flyinghead.github.io/flycast-builds/altstore.json",
-  "https://altstore.oatmealdome.me/",
   "https://alt.crystall1ne.dev/",
   "https://apps.sidestore.io/",
   "https://repos.yattee.stream/alt/apps.json",
   "https://alt.thatstel.la/",
-  // include repo.ethsign.fyi explicitly
   "https://repo.ethsign.fyi"
 ];
 /* -------------------------------------------------------------------------- */
@@ -145,63 +140,47 @@ function fetchWithTimeout(resource, options = {}) {
     .finally(() => clearTimeout(id));
 }
 
-/* Try a list of candidate URLs (direct and common suffixes), then try proxies.
-   If any returns valid JSON, resolve with the parsed JSON. Otherwise throw.
-*/
+/* -------------------- FIXED tryFetchJson -------------------- */
 async function tryFetchJson(url) {
   const candidates = new Set();
-
-  // normalize
   const base = url.trim();
 
-  // direct
+  // always try the base URL
   candidates.add(base);
 
-  // common suffixes appended
-  const suffixes = ['/apps.json','/app.json','/repo.json','/altstore.json','/index.json','/packages.json','/app-repo.json','/alt.json'];
+  // common suffixes
+  const suffixes = [
+    '/apps.json','/app.json','/repo.json','/altstore.json','/index.json',
+    '/packages.json','/app-repo.json','/alt.json','/altstore.php'
+  ];
   for (const s of suffixes) candidates.add(base.replace(/\/+$/,'') + s);
 
-  // if url ends with .php/.html/.htm, try same with .json
+  // replace PHP/HTML/HTM with JSON
   if (base.match(/\.(php|html|htm)$/i)) candidates.add(base.replace(/\.(php|html|htm)$/i, '.json'));
 
-  // If url is domain root without protocol (unlikely) user pasted: ensure http/https candidates
+  // if no protocol, try https/http
   if (!base.startsWith('http://') && !base.startsWith('https://')) {
     candidates.add('https://' + base);
     candidates.add('http://' + base);
   }
 
-  // try direct candidates first with reasonable timeout, limited concurrency
   const tryList = Array.from(candidates);
 
-  // helper to test a single candidate
-  async function testCandidate(c) {
+  async function fetchAndParse(u) {
     try {
-      const r = await fetchWithTimeout(c, { timeout: 7000 });
+      const r = await fetchWithTimeout(u, { timeout: 7000 });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const txt = await r.text();
-      try {
-        const parsed = JSON.parse(txt);
-        return parsed;
-      } catch(e) {
-        // not JSON
-        throw new Error('not-json');
-      }
-    } catch(e) {
-      throw e;
-    }
+      try { return JSON.parse(txt); } catch { throw new Error('not-json'); }
+    } catch(e){ throw e; }
   }
 
-  // test direct candidates sequentially (small number)
+  // direct attempts
   for (const c of tryList) {
-    try {
-      const parsed = await testCandidate(c);
-      return parsed;
-    } catch(e) {
-      // continue to proxies if direct attempts fail
-    }
+    try { return await fetchAndParse(c); } catch {}
   }
 
-  // proxies fallback (best-effort). Note: public proxies may be rate-limited.
+  // proxies fallback
   const proxies = [
     u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
     u => 'https://r.jina.ai/http://' + u.replace(/^https?:\/\//,''),
@@ -212,39 +191,23 @@ async function tryFetchJson(url) {
   for (const c of tryList) {
     for (const p of proxies) {
       const proxyUrl = p(c);
-      try {
-        const r = await fetchWithTimeout(proxyUrl, { timeout: 9000 });
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const txt = await r.text();
-        try {
-          const parsed = JSON.parse(txt);
-          return parsed;
-        } catch(e) {
-          // not JSON via proxy
-        }
-      } catch(e) {
-        // continue
-      }
+      try { return await fetchAndParse(proxyUrl); } catch {}
     }
   }
 
-  throw new Error('No valid JSON from candidates or proxies');
+  throw new Error('No valid JSON found');
 }
+/* ----------------------------------------------------------- */
 
-/* Concurrency-limited builder:
-   - avoids starting 40 fetches at once (some repos can be slow)
-   - returns card HTML for valid repos only
-*/
+/* Concurrency-limited builder & rest of your code */
 async function buildRepoCard(url, isUser) {
   try {
     const data = await tryFetchJson(url);
-    // require either name/description or apps array
     const hasApps = Array.isArray(data.apps) && data.apps.length > 0;
     const firstApp = hasApps ? data.apps[0] : {};
     const icon = data.iconURL || firstApp.iconURL || '';
     const name = (data.name || firstApp.name || '').trim();
     const desc = (data.description || firstApp.subtitle || firstApp.localizedDescription || '').trim();
-    // if neither name nor apps, skip
     if (!name && !hasApps) throw new Error('missing metadata');
     const esc = s => (s||'').replace(/'/g,"\\'");
     return `
@@ -262,16 +225,14 @@ async function buildRepoCard(url, isUser) {
       </div>
     `;
   } catch(e) {
-    // silently skip invalid/broken repos
     console.warn('Repo skipped:', url, e.message || e);
     return '';
   }
 }
 
-/* Render repos with controlled concurrency */
 async function loadRepos() {
   reposArea.innerHTML = `<div class="loading-line">Loading libraries…</div>`;
-  const all = [...userRepos, ...defaultRepos]; // user first so they show on top; we label sections later
+  const all = [...userRepos, ...defaultRepos];
   const results = [];
   const concurrency = 6;
   let i = 0;
@@ -286,16 +247,12 @@ async function loadRepos() {
     }
   }
 
-  // start workers
   const workers = Array.from({length:concurrency}, () => worker());
   await Promise.all(workers);
 
-  // group: user repos then default
   let out = '';
-  // user section
   const userHtml = results.slice(0, userRepos.length).map(r => r ? r.html : '').filter(Boolean).join('');
   if (userHtml) out += `<div class="repo-section-title">User Repos</div>` + userHtml;
-  // default section
   const defHtml = results.slice(userRepos.length).map(r => r ? r.html : '').filter(Boolean).join('');
   if (defHtml) out += `<div class="repo-section-title">Default Repos</div>` + defHtml;
 
@@ -303,7 +260,6 @@ async function loadRepos() {
   attachRepoHandlers();
 }
 
-/* attach handlers for the cards */
 function attachRepoHandlers() {
   document.querySelectorAll('.openBtn').forEach(btn => btn.onclick = () => openRepo(btn.dataset.url));
   document.querySelectorAll('.copyBtn').forEach(btn => {
@@ -322,7 +278,6 @@ function attachRepoHandlers() {
   });
 }
 
-/* open repo: hide list & import, show search/back, load apps */
 async function openRepo(url) {
   viewingRepoUrl = url;
   window.scrollTo({top:0,behavior:'auto'});
@@ -341,7 +296,6 @@ async function openRepo(url) {
   }
 }
 
-/* render apps */
 function renderApps(apps) {
   if (!apps || apps.length === 0) {
     appsArea.innerHTML = `<div class="loading-line">No apps found.</div>`;
@@ -366,7 +320,6 @@ function renderApps(apps) {
   });
 }
 
-/* back button */
 backBtn.addEventListener('click', () => {
   viewingRepoUrl = null;
   appsArea.innerHTML = '';
@@ -377,7 +330,6 @@ backBtn.addEventListener('click', () => {
   window.scrollTo({top:0,behavior:'auto'});
 });
 
-/* search */
 searchInput.addEventListener('input', () => {
   const q = searchInput.value.toLowerCase();
   const filtered = (currentApps || []).filter(app => {
@@ -388,14 +340,13 @@ searchInput.addEventListener('input', () => {
   renderApps(filtered);
 });
 
-/* import handler: validate, save, auto-open */
 importBtn.addEventListener('click', async () => {
   const url = importInput.value.trim();
   if (!url) return showToast('Paste a valid repo URL');
   if (isAlreadyAdded(url)) return showToast('Repo already added');
   showToast('Validating repo...');
   try {
-    await tryFetchJson(url); // validate
+    await tryFetchJson(url);
     userRepos.push(url);
     saveUserRepos();
     importInput.value = '';
@@ -407,9 +358,6 @@ importBtn.addEventListener('click', async () => {
     showToast('Failed to import (invalid JSON or unreachable)');
   }
 });
-
-/* persistence */
-function saveUserRepos(){ localStorage.setItem('userRepos', JSON.stringify(userRepos)); }
 
 /* init */
 loadRepos();
