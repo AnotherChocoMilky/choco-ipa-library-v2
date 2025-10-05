@@ -52,7 +52,7 @@ footer{text-align:center;color:var(--subtle);padding:18px 0;margin-top:auto}
     <button id="importBtn">Import</button>
   </div>
 
-  <div id="repos"><div class="loading-line">Loading libraries…</div></div>
+  <div id="repos"></div>
 
   <button id="backBtn">← Back to Libraries</button>
 
@@ -65,6 +65,7 @@ footer{text-align:center;color:var(--subtle);padding:18px 0;margin-top:auto}
 <footer>© 2025 Choco Milky IPA Library V2</footer>
 
 <script>
+/* --------------------- Default repo list (as requested) --------------------- */
 const defaultRepos = [
   "https://raw.githubusercontent.com/WhySooooFurious/Ultimate-Sideloading-Guide/refs/heads/main/raw-files/app-repo.json",
   "https://esign.yyyue.xyz/app.json",
@@ -104,8 +105,10 @@ const defaultRepos = [
   "https://apps.sidestore.io/",
   "https://repos.yattee.stream/alt/apps.json",
   "https://alt.thatstel.la/",
+  // include repo.ethsign.fyi explicitly
   "https://repo.ethsign.fyi"
 ];
+/* -------------------------------------------------------------------------- */
 
 const reposArea = document.getElementById('repos');
 const appsArea = document.getElementById('apps');
@@ -121,175 +124,295 @@ let currentApps = [];
 let userRepos = JSON.parse(localStorage.getItem('userRepos') || '[]');
 let viewingRepoUrl = null;
 
+/* helper: show toast */
 function showToast(msg, ms=1500){
   toast.textContent = msg;
-  toast.style.display='block';
+  toast.style.display = 'block';
   clearTimeout(toast._t);
-  toast._t = setTimeout(()=>toast.style.display='none', ms);
+  toast._t = setTimeout(()=> toast.style.display='none', ms);
 }
 
+/* persistence & checks */
 function saveUserRepos(){ localStorage.setItem('userRepos', JSON.stringify(userRepos)); }
-function isAlreadyAdded(url){ return userRepos.includes(url)||defaultRepos.includes(url); }
+function isAlreadyAdded(url){ return userRepos.includes(url) || defaultRepos.includes(url); }
 
-async function tryFetchJson(url){
-  const suffixes=['','/apps.json','/app.json','/repo.json','/altstore.json','/index.json','/packages.json','/app-repo.json','/alt.json'];
-  for(const s of suffixes){
-    const fullUrl=url.replace(/\/+$/,'')+s;
-    try{
-      const r=await fetch(fullUrl,{cache:'no-store'});
-      if(!r.ok) continue;
-      const data=await r.json();
-      return data;
-    }catch{}
+/* fetch with timeout helper */
+function fetchWithTimeout(resource, options = {}) {
+  const { timeout = 8000 } = options;
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  return fetch(resource, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(id));
+}
+
+/* Try a list of candidate URLs (direct and common suffixes), then try proxies.
+   If any returns valid JSON, resolve with the parsed JSON. Otherwise throw.
+*/
+async function tryFetchJson(url) {
+  const candidates = new Set();
+
+  // normalize
+  const base = url.trim();
+
+  // direct
+  candidates.add(base);
+
+  // common suffixes appended
+  const suffixes = ['/apps.json','/app.json','/repo.json','/altstore.json','/index.json','/packages.json','/app-repo.json','/alt.json'];
+  for (const s of suffixes) candidates.add(base.replace(/\/+$/,'') + s);
+
+  // if url ends with .php/.html/.htm, try same with .json
+  if (base.match(/\.(php|html|htm)$/i)) candidates.add(base.replace(/\.(php|html|htm)$/i, '.json'));
+
+  // If url is domain root without protocol (unlikely) user pasted: ensure http/https candidates
+  if (!base.startsWith('http://') && !base.startsWith('https://')) {
+    candidates.add('https://' + base);
+    candidates.add('http://' + base);
   }
-  return null;
-}
 
-async function buildRepoCard(url,isUser){
-  const data=await tryFetchJson(url);
-  if(!data) return '';
-  const hasApps=Array.isArray(data.apps)&&data.apps.length>0;
-  const firstApp=hasApps?data.apps[0]:{};
-  const icon=data.iconURL||firstApp.iconURL||'';
-  const name=(data.name||firstApp.name||'').trim();
-  const desc=(data.description||firstApp.subtitle||firstApp.localizedDescription||'').trim();
-  if(!name&&!hasApps) return '';
-  const esc=s=>(s||'').replace(/'/g,"\\'");
-  const html=`<div class="repo-card" data-url='${esc(url)}'>
-      <img src="${esc(icon)}" alt="">
-      <div class="repo-info">
-        <div class="repo-name">${esc(name)}</div>
-        <div class="repo-desc">${esc(desc)}</div>
-      </div>
-      <div class="repo-actions">
-        <button class="openBtn" data-url='${esc(url)}'>Open</button>
-        <button class="copyBtn" data-url='${esc(url)}'>Copy URL</button>
-        ${isUser?`<button class="deleteBtn" data-url='${esc(url)}'>Delete</button>`:''}
-      </div>
-    </div>`;
-  return html;
-}
+  // try direct candidates first with reasonable timeout, limited concurrency
+  const tryList = Array.from(candidates);
 
-async function loadRepos(){
-  reposArea.innerHTML='<div class="loading-line">Loading libraries…</div>';
-  const allRepos=[...userRepos,...defaultRepos];
-  const results=[];
-  const concurrency=6;
-  let i=0;
-  async function worker(){
-    while(i<allRepos.length){
-      const idx=i++;
-      const url=allRepos[idx];
-      const isUser=idx<userRepos.length;
-      const html=await buildRepoCard(url,isUser);
-      results[idx]={url,isUser,html};
+  // helper to test a single candidate
+  async function testCandidate(c) {
+    try {
+      const r = await fetchWithTimeout(c, { timeout: 7000 });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const txt = await r.text();
+      try {
+        const parsed = JSON.parse(txt);
+        return parsed;
+      } catch(e) {
+        // not JSON
+        throw new Error('not-json');
+      }
+    } catch(e) {
+      throw e;
     }
   }
-  await Promise.all(Array.from({length:concurrency},()=>worker()));
 
-  // render with user section first
-  let out='';
-  const userHtml=results.slice(0,userRepos.length).map(r=>r?r.html:'').filter(Boolean).join('');
-  if(userHtml) out+=`<div class="repo-section-title">User Repos</div>`+userHtml;
-  const defHtml=results.slice(userRepos.length).map(r=>r?r.html:'').filter(Boolean).join('');
-  if(defHtml) out+=`<div class="repo-section-title">Default Repos</div>`+defHtml;
-  reposArea.innerHTML=out||'<div class="loading-line">No libraries loaded.</div>';
+  // test direct candidates sequentially (small number)
+  for (const c of tryList) {
+    try {
+      const parsed = await testCandidate(c);
+      return parsed;
+    } catch(e) {
+      // continue to proxies if direct attempts fail
+    }
+  }
+
+  // proxies fallback (best-effort). Note: public proxies may be rate-limited.
+  const proxies = [
+    u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+    u => 'https://r.jina.ai/http://' + u.replace(/^https?:\/\//,''),
+    u => 'https://corsproxy.io/?' + encodeURIComponent(u),
+    u => 'https://thingproxy.freeboard.io/fetch/' + u
+  ];
+
+  for (const c of tryList) {
+    for (const p of proxies) {
+      const proxyUrl = p(c);
+      try {
+        const r = await fetchWithTimeout(proxyUrl, { timeout: 9000 });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const txt = await r.text();
+        try {
+          const parsed = JSON.parse(txt);
+          return parsed;
+        } catch(e) {
+          // not JSON via proxy
+        }
+      } catch(e) {
+        // continue
+      }
+    }
+  }
+
+  throw new Error('No valid JSON from candidates or proxies');
+}
+
+/* Concurrency-limited builder:
+   - avoids starting 40 fetches at once (some repos can be slow)
+   - returns card HTML for valid repos only
+*/
+async function buildRepoCard(url, isUser) {
+  try {
+    const data = await tryFetchJson(url);
+    // require either name/description or apps array
+    const hasApps = Array.isArray(data.apps) && data.apps.length > 0;
+    const firstApp = hasApps ? data.apps[0] : {};
+    const icon = data.iconURL || firstApp.iconURL || '';
+    const name = (data.name || firstApp.name || '').trim();
+    const desc = (data.description || firstApp.subtitle || firstApp.localizedDescription || '').trim();
+    // if neither name nor apps, skip
+    if (!name && !hasApps) throw new Error('missing metadata');
+    const esc = s => (s||'').replace(/'/g,"\\'");
+    return `
+      <div class="repo-card" data-url='${esc(url)}'>
+        <img src="${esc(icon)}" alt="">
+        <div class="repo-info">
+          <div class="repo-name">${esc(name || (hasApps? firstApp.name : ''))}</div>
+          <div class="repo-desc">${esc(desc || (hasApps? firstApp.subtitle||firstApp.localizedDescription : ''))}</div>
+        </div>
+        <div class="repo-actions">
+          <button class="openBtn" data-url='${esc(url)}'>Open</button>
+          <button class="copyBtn" data-url='${esc(url)}'>Copy URL</button>
+          ${isUser?`<button class="deleteBtn" data-url='${esc(url)}'>Delete</button>`:''}
+        </div>
+      </div>
+    `;
+  } catch(e) {
+    // silently skip invalid/broken repos
+    console.warn('Repo skipped:', url, e.message || e);
+    return '';
+  }
+}
+
+/* Render repos with controlled concurrency */
+async function loadRepos() {
+  reposArea.innerHTML = `<div class="loading-line">Loading libraries…</div>`;
+  const all = [...userRepos, ...defaultRepos]; // user first so they show on top; we label sections later
+  const results = [];
+  const concurrency = 6;
+  let i = 0;
+
+  async function worker() {
+    while (i < all.length) {
+      const idx = i++;
+      const url = all[idx];
+      const isUser = idx < userRepos.length;
+      const html = await buildRepoCard(url, isUser);
+      results[idx] = { url, isUser, html };
+    }
+  }
+
+  // start workers
+  const workers = Array.from({length:concurrency}, () => worker());
+  await Promise.all(workers);
+
+  // group: user repos then default
+  let out = '';
+  // user section
+  const userHtml = results.slice(0, userRepos.length).map(r => r ? r.html : '').filter(Boolean).join('');
+  if (userHtml) out += `<div class="repo-section-title">User Repos</div>` + userHtml;
+  // default section
+  const defHtml = results.slice(userRepos.length).map(r => r ? r.html : '').filter(Boolean).join('');
+  if (defHtml) out += `<div class="repo-section-title">Default Repos</div>` + defHtml;
+
+  reposArea.innerHTML = out || `<div class="loading-line">No libraries loaded.</div>`;
   attachRepoHandlers();
 }
 
-function attachRepoHandlers(){
-  document.querySelectorAll('.openBtn').forEach(btn=>btn.onclick=()=>openRepo(btn.dataset.url));
-  document.querySelectorAll('.copyBtn').forEach(btn=>btn.onclick=async()=>{
-    try{await navigator.clipboard.writeText(btn.dataset.url);showToast('Copied URL');}
-    catch{alert('Copy failed');}
+/* attach handlers for the cards */
+function attachRepoHandlers() {
+  document.querySelectorAll('.openBtn').forEach(btn => btn.onclick = () => openRepo(btn.dataset.url));
+  document.querySelectorAll('.copyBtn').forEach(btn => {
+    btn.onclick = async () => {
+      try { await navigator.clipboard.writeText(btn.dataset.url); showToast('Copied URL'); }
+      catch (e) { alert('Copy failed'); }
+    };
   });
-  document.querySelectorAll('.deleteBtn').forEach(btn=>btn.onclick=()=>{
-    if(!confirm('Delete this repo?')) return;
-    userRepos=userRepos.filter(r=>r!==btn.dataset.url);
+  document.querySelectorAll('.deleteBtn').forEach(btn => btn.onclick = () => {
+    const url = btn.dataset.url;
+    if (!confirm('Are you sure you want to delete this repo?')) return;
+    userRepos = userRepos.filter(r => r !== url);
     saveUserRepos();
     showToast('Repo deleted');
     loadRepos();
   });
 }
 
-async function openRepo(url){
-  viewingRepoUrl=url;
-  window.scrollTo({top:0});
-  reposArea.style.display='none';
-  importRepoBox.style.display='none';
-  backBtn.style.display='block';
-  searchBar.style.display='flex';
-  appsArea.innerHTML='<div class="loading-line">Loading apps…</div>';
-  try{
-    const data=await tryFetchJson(url);
-    currentApps=data?.apps||[];
+/* open repo: hide list & import, show search/back, load apps */
+async function openRepo(url) {
+  viewingRepoUrl = url;
+  window.scrollTo({top:0,behavior:'auto'});
+  reposArea.style.display = 'none';
+  importRepoBox.style.display = 'none';
+  backBtn.style.display = 'block';
+  searchBar.style.display = 'flex';
+  appsArea.innerHTML = `<div class="loading-line">Loading apps…</div>`;
+  try {
+    const data = await tryFetchJson(url);
+    currentApps = data.apps || [];
     renderApps(currentApps);
-  }catch{
-    appsArea.innerHTML='<div class="loading-line">Error loading repo.</div>';
-    currentApps=[];
+  } catch(e) {
+    appsArea.innerHTML = `<div class="loading-line">Error loading repo.</div>`;
+    currentApps = [];
   }
 }
 
-function renderApps(apps){
-  if(!apps||apps.length===0){ appsArea.innerHTML='<div class="loading-line">No apps found.</div>'; return; }
-  appsArea.innerHTML='';
-  apps.forEach(app=>{
-    const latest=(app.versions&&app.versions.length)?app.versions[0]:{};
-    const version=latest.version||app.version||'';
-    const desc=app.subtitle||app.localizedDescription||latest.localizedDescription||'';
-    const downloadURL=app.downloadURL||latest.downloadURL||'#';
-    const card=document.createElement('div');
-    card.className='card';
-    card.innerHTML=`<div class="icon"><img src="${app.iconURL||''}" alt=""></div>
+/* render apps */
+function renderApps(apps) {
+  if (!apps || apps.length === 0) {
+    appsArea.innerHTML = `<div class="loading-line">No apps found.</div>`;
+    return;
+  }
+  appsArea.innerHTML = '';
+  apps.forEach(app => {
+    const latest = (app.versions && app.versions.length) ? app.versions[0] : {};
+    const version = latest.version || app.version || '';
+    const desc = app.subtitle || app.localizedDescription || latest.localizedDescription || '';
+    const downloadURL = app.downloadURL || latest.downloadURL || '#';
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="icon"><img src="${app.iconURL||''}" alt=""></div>
       <div class="title">${app.name||''}</div>
       <div class="subtitle">${desc}</div>
-      <div class="version">${version?'Version '+version:''}</div>
-      <a class="download" href="${downloadURL}" target="_blank" rel="noopener">Download</a>`;
+      <div class="version">${version ? 'Version ' + version : ''}</div>
+      <a class="download" href="${downloadURL}" target="_blank" rel="noopener">Download</a>
+    `;
     appsArea.appendChild(card);
   });
 }
 
-backBtn.onclick=()=>{
-  viewingRepoUrl=null;
-  appsArea.innerHTML='';
-  reposArea.style.display='';
-  importRepoBox.style.display='';
-  backBtn.style.display='none';
-  searchBar.style.display='none';
-  window.scrollTo({top:0});
-};
+/* back button */
+backBtn.addEventListener('click', () => {
+  viewingRepoUrl = null;
+  appsArea.innerHTML = '';
+  reposArea.style.display = '';
+  importRepoBox.style.display = '';
+  backBtn.style.display = 'none';
+  searchBar.style.display = 'none';
+  window.scrollTo({top:0,behavior:'auto'});
+});
 
-searchInput.oninput=()=>{
-  const q=searchInput.value.toLowerCase();
-  renderApps((currentApps||[]).filter(app=>{
-    const latest=(app.versions&&app.versions.length)?app.versions[0]:{};
-    const fields=[app.name,app.subtitle,app.localizedDescription,app.developerName,app.bundleIdentifier,latest.localizedDescription];
-    return fields.some(f=>f&&f.toLowerCase().includes(q));
-  }));
-};
+/* search */
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.toLowerCase();
+  const filtered = (currentApps || []).filter(app => {
+    const latest = (app.versions && app.versions.length) ? app.versions[0] : {};
+    const fields = [app.name, app.subtitle, app.localizedDescription, app.developerName, app.bundleIdentifier, latest.localizedDescription];
+    return fields.some(f => f && f.toLowerCase().includes(q));
+  });
+  renderApps(filtered);
+});
 
-importBtn.onclick=async()=>{
-  const url=importInput.value.trim();
-  if(!url) return showToast('Paste a valid repo URL');
-  if(isAlreadyAdded(url)) return showToast('Repo already added');
+/* import handler: validate, save, auto-open */
+importBtn.addEventListener('click', async () => {
+  const url = importInput.value.trim();
+  if (!url) return showToast('Paste a valid repo URL');
+  if (isAlreadyAdded(url)) return showToast('Repo already added');
   showToast('Validating repo...');
-  try{
-    await tryFetchJson(url);
+  try {
+    await tryFetchJson(url); // validate
     userRepos.push(url);
     saveUserRepos();
-    importInput.value='';
+    importInput.value = '';
     await loadRepos();
     showToast('Imported — opening...');
     openRepo(url);
-  }catch{
+  } catch(e) {
+    console.error('Import failed', e);
     showToast('Failed to import (invalid JSON or unreachable)');
   }
-};
+});
 
-// 3-second fake loading
-const originalContent=reposArea.innerHTML;
-reposArea.innerHTML='<div class="loading-line">Loading libraries…</div>';
-setTimeout(()=>{loadRepos();},3000);
+/* persistence */
+function saveUserRepos(){ localStorage.setItem('userRepos', JSON.stringify(userRepos)); }
+
+/* init */
+loadRepos();
 </script>
 </body>
 </html>
