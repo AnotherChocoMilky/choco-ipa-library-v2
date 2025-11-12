@@ -21,7 +21,7 @@ app.use(cors());
 app.use(express.static(path.join(__dirname, "public"))); // serves index.html etc.
 
 // ========================================================
-//  Full Repo List (exact same as your HTML)
+//  Full Repo List
 // ========================================================
 const repos = [
   "https://raw.githubusercontent.com/WhySooooFurious/Ultimate-Sideloading-Guide/refs/heads/main/raw-files/app-repo.json",
@@ -84,9 +84,7 @@ async function fetchWithTimeout(url, timeout = 7000) {
         "Sec-Fetch-Site": "same-origin"
       }
     });
-
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
     const txt = await res.text();
     try {
       return JSON.parse(txt);
@@ -100,26 +98,36 @@ async function fetchWithTimeout(url, timeout = 7000) {
 }
 
 // ========================================================
-//  Main repo fetch logic
+//  Main repo fetch logic (with proxy fallback for NabzClan)
 // ========================================================
 async function fetchRepo(url) {
-  // ---- NabzClan special proxy handling ----
+  // --- NabzClan handling with dual proxy fallback ---
   if (url.includes("nabzclan.vip")) {
-    const proxied = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
-    try {
-      const res = await fetch(proxied);
-      const txt = await res.text();
-      const data = JSON.parse(txt);
-      if (data && (data.apps?.length || Array.isArray(data.apps))) {
-        return { url, data };
+    const proxies = [
+      "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
+      "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(url),
+      "https://thingproxy.freeboard.io/fetch/" + url
+    ];
+
+    for (const proxy of proxies) {
+      try {
+        const res = await fetch(proxy);
+        const txt = await res.text();
+        const data = JSON.parse(txt);
+        if (data && (data.apps?.length || Array.isArray(data.apps))) {
+          console.log(`✅ NabzClan loaded via proxy: ${proxy}`);
+          return { url, data };
+        }
+      } catch (err) {
+        console.warn(`⚠️ NabzClan proxy failed: ${proxy}`, err.message);
       }
-    } catch (e) {
-      console.error("Failed NabzClan via proxy:", e);
-      return null;
     }
+
+    console.error("❌ All NabzClan proxies failed.");
+    return null;
   }
 
-  // ---- Normal handling for all other repos ----
+  // --- Normal handling for all other repos ---
   const suffixes = [
     "", "/apps.json", "/app.json", "/repo.json", "/altstore.json",
     "/index.json", "/packages.json", "/app-repo.json", "/alt.json", "/altstore.php"
@@ -130,7 +138,9 @@ async function fetchRepo(url) {
       if (data && (data.apps?.length || Array.isArray(data.apps))) {
         return { url, data };
       }
-    } catch {}
+    } catch (err) {
+      console.warn(`Repo failed: ${url}${s} (${err.message})`);
+    }
   }
   return null;
 }
@@ -166,7 +176,7 @@ app.get("/api/repos", async (req, res) => {
 });
 
 // ========================================================
-//  ✅ Catch-all fallback so / and other paths load the site
+//  Catch-all fallback
 // ========================================================
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
