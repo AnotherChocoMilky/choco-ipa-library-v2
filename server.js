@@ -72,14 +72,10 @@ async function fetchWithTimeout(url, timeout = 7000) {
       signal: controller.signal,
       redirect: "follow",
       headers: {
-        // Nabzclan and similar Cloudflare-protected sites expect real browser headers
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36",
-        "Accept":
-          "application/json, text/javascript, */*; q=0.01",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
         "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://appstore.nabzclan.vip/",
-        "Origin": "https://appstore.nabzclan.vip",
         "Cache-Control": "no-cache",
         "Pragma": "no-cache",
         "Connection": "keep-alive",
@@ -103,7 +99,27 @@ async function fetchWithTimeout(url, timeout = 7000) {
   }
 }
 
+// ========================================================
+//  Main repo fetch logic
+// ========================================================
 async function fetchRepo(url) {
+  // ---- NabzClan special proxy handling ----
+  if (url.includes("nabzclan.vip")) {
+    const proxied = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
+    try {
+      const res = await fetch(proxied);
+      const txt = await res.text();
+      const data = JSON.parse(txt);
+      if (data && (data.apps?.length || Array.isArray(data.apps))) {
+        return { url, data };
+      }
+    } catch (e) {
+      console.error("Failed NabzClan via proxy:", e);
+      return null;
+    }
+  }
+
+  // ---- Normal handling for all other repos ----
   const suffixes = [
     "", "/apps.json", "/app.json", "/repo.json", "/altstore.json",
     "/index.json", "/packages.json", "/app-repo.json", "/alt.json", "/altstore.php"
@@ -132,6 +148,7 @@ app.get("/api/repos", async (req, res) => {
   const concurrency = 20;
   const results = [];
   let i = 0;
+
   async function worker() {
     while (i < repos.length) {
       const idx = i++;
@@ -140,6 +157,7 @@ app.get("/api/repos", async (req, res) => {
       results[idx] = r;
     }
   }
+
   await Promise.all(Array.from({ length: concurrency }, worker));
   const valid = results.filter(Boolean);
 
