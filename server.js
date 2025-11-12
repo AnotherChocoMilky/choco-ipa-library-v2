@@ -68,10 +68,26 @@ async function fetchWithTimeout(url, timeout = 7000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache"
+      }
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
     const txt = await res.text();
-    return JSON.parse(txt);
+    try {
+      return JSON.parse(txt);
+    } catch {
+      const cleaned = txt.trim().replace(/^[^{\[]+/, "").replace(/[^}\]]+$/, "");
+      return JSON.parse(cleaned);
+    }
   } finally {
     clearTimeout(id);
   }
