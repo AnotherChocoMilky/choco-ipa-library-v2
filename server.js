@@ -72,13 +72,23 @@ async function fetchWithTimeout(url, timeout = 7000) {
       signal: controller.signal,
       redirect: "follow",
       headers: {
+        // Nabzclan and similar Cloudflare-protected sites expect real browser headers
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
+        "Accept":
+          "application/json, text/javascript, */*; q=0.01",
         "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "no-cache"
+        "Referer": "https://apps.nabzclan.vip/",
+        "Origin": "https://apps.nabzclan.vip",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Connection": "keep-alive",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin"
       }
     });
+
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const txt = await res.text();
