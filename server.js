@@ -98,11 +98,21 @@ async function fetchWithTimeout(url, timeout = 7000) {
 }
 
 // ========================================================
-//  Main repo fetch logic (with proxy fallback for NabzClan)
+//  Main repo fetch logic (robust with proxy fallback)
 // ========================================================
 async function fetchRepo(url) {
-  // --- NabzClan handling with dual proxy fallback ---
-  if (url.includes("nabzclan.vip")) {
+  // Domains that are known to block direct fetch (Cloudflare/CDN protected)
+  const hardDomains = [
+    "nabzclan.vip",
+    "ipa.cypwn.xyz",
+    "repo.ethsign.fyi",
+    "alt.thatstel.la",
+    "repository.apptesters.org",
+    "alts.lao.sb"
+  ];
+
+  // --- Proxy handling for problematic domains ---
+  if (hardDomains.some(d => url.includes(d))) {
     const proxies = [
       "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
       "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(url),
@@ -115,23 +125,24 @@ async function fetchRepo(url) {
         const txt = await res.text();
         const data = JSON.parse(txt);
         if (data && (data.apps?.length || Array.isArray(data.apps))) {
-          console.log(`✅ NabzClan loaded via proxy: ${proxy}`);
+          console.log(`✅ Loaded via proxy: ${proxy}`);
           return { url, data };
         }
       } catch (err) {
-        console.warn(`⚠️ NabzClan proxy failed: ${proxy}`, err.message);
+        console.warn(`⚠️ Proxy failed for ${url}: ${proxy} (${err.message})`);
       }
     }
 
-    console.error("❌ All NabzClan proxies failed.");
+    console.error(`❌ All proxies failed for ${url}`);
     return null;
   }
 
-  // --- Normal handling for all other repos ---
+  // --- Normal handling for others ---
   const suffixes = [
     "", "/apps.json", "/app.json", "/repo.json", "/altstore.json",
     "/index.json", "/packages.json", "/app-repo.json", "/alt.json", "/altstore.php"
   ];
+
   for (const s of suffixes) {
     try {
       const data = await fetchWithTimeout(url.replace(/\/+$/, "") + s);
@@ -142,6 +153,7 @@ async function fetchRepo(url) {
       console.warn(`Repo failed: ${url}${s} (${err.message})`);
     }
   }
+
   return null;
 }
 
