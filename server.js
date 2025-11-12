@@ -4,16 +4,24 @@ import path from "path";
 import { fileURLToPath } from "url";
 import cors from "cors";
 
+// ========================================================
+//  Setup
+// ========================================================
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
 app.use(cors());
-app.use(express.static(path.join(__dirname, "public"))); // serve your index.html
 
 // ========================================================
-//  Full Repo List (same as your HTML)
+//  Serve static site from /public
+// ========================================================
+app.use(express.static(path.join(__dirname, "public"))); // serves index.html etc.
+
+// ========================================================
+//  Full Repo List (exact same as your HTML)
 // ========================================================
 const repos = [
   "https://raw.githubusercontent.com/WhySooooFurious/Ultimate-Sideloading-Guide/refs/heads/main/raw-files/app-repo.json",
@@ -113,6 +121,16 @@ app.get("/api/repos", async (req, res) => {
   res.json(valid);
 });
 
-app.listen(PORT, () =>
-  console.log(`🚀 Choco Milky Backend+Frontend on port ${PORT}`)
-);
+// ========================================================
+//  ✅ Catch-all fallback so / and other paths load the site
+// ========================================================
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+// ========================================================
+//   Start server
+// ========================================================
+app.listen(PORT, () => {
+  console.log(`🚀 Choco Milky Backend+Frontend running on port ${PORT}`);
+});
