@@ -158,7 +158,6 @@ async function openRepo(url) {
   appsArea.innerHTML = `<div class="loading-line">Loading apps…</div>`;
 
   try {
-    // find matching repo in the cached data
     const res = await fetch("/api/repos");
     const all = await res.json();
     const repo = all.find(r => r.url === url);
@@ -219,6 +218,33 @@ searchInput.addEventListener("input", () => {
   renderApps(filtered);
 });
 
+// =======================================================
+// ADDED: USER REPO IMPORT SUPPORT
+// =======================================================
+importBtn.addEventListener("click", async () => {
+  const url = importInput.value.trim();
+  if (!url) return showToast("Enter a repo URL");
+
+  try {
+    const res = await fetch("/api/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url })
+    });
+
+    const data = await res.json();
+    if (!res.ok) return showToast(data.error || "Import failed");
+
+    showToast("Repo added!");
+    importInput.value = "";
+    loadRepos();
+  } catch (e) {
+    console.error(e);
+    showToast("Import failed");
+  }
+});
+
+// =======================================================
 loadRepos();
 </script>
 </body>
