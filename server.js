@@ -14,6 +14,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+app.use(express.json()); // ⭐ REQUIRED for /api/import
 
 // ========================================================
 //  Serve static site from /public
@@ -21,7 +22,8 @@ app.use(cors());
 app.use(express.static(path.join(__dirname, "public"))); // serves index.html etc.
 
 // ========================================================
-//  Full Repo List
+//  Full Repo List (default repos)
+//  User-added repos will be pushed here dynamically
 // ========================================================
 const repos = [
   "https://raw.githubusercontent.com/WhySooooFurious/Ultimate-Sideloading-Guide/refs/heads/main/raw-files/app-repo.json",
@@ -101,7 +103,6 @@ async function fetchWithTimeout(url, timeout = 7000) {
 //  Main repo fetch logic (robust with proxy fallback)
 // ========================================================
 async function fetchRepo(url) {
-  // Domains that are known to block direct fetch (Cloudflare/CDN protected)
   const hardDomains = [
     "nabzclan.vip",
     "ipa.cypwn.xyz",
@@ -111,7 +112,6 @@ async function fetchRepo(url) {
     "alts.lao.sb"
   ];
 
-  // --- Proxy handling for problematic domains ---
   if (hardDomains.some(d => url.includes(d))) {
     const proxies = [
       "https://api.allorigins.win/raw?url=" + encodeURIComponent(url),
@@ -137,7 +137,6 @@ async function fetchRepo(url) {
     return null;
   }
 
-  // --- Normal handling for others ---
   const suffixes = [
     "", "/apps.json", "/app.json", "/repo.json", "/altstore.json",
     "/index.json", "/packages.json", "/app-repo.json", "/alt.json", "/altstore.php"
@@ -185,6 +184,23 @@ app.get("/api/repos", async (req, res) => {
 
   cache = { data: valid, timestamp: Date.now() };
   res.json(valid);
+});
+
+// ========================================================
+//  ⭐ USER REPO IMPORT API (NEW)
+// ========================================================
+app.post("/api/import", async (req, res) => {
+  const { url } = req.body;
+
+  if (!url) return res.status(400).json({ error: "Missing URL" });
+
+  // add repo to the main list
+  repos.push(url);
+
+  // clear cache so next /api/repos refreshes everything
+  cache = { data: null, timestamp: 0 };
+
+  return res.json({ success: true, added: url });
 });
 
 // ========================================================
